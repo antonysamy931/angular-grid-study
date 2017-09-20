@@ -1,0 +1,119 @@
+﻿@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+
+<html ng-app="test">
+<head>
+    <meta name="viewport" content="width=device-width" />
+    <title>Test</title>
+    <link href="~/Scripts/node_modules/angular-ui-grid/ui-grid.css" rel="stylesheet" />
+    <script src="~/Scripts/node_modules/angular/angular.js"></script>
+    <script src="~/Scripts/node_modules/angular-resource/angular-resource.js"></script>
+    <script src="~/Scripts/node_modules/angular-ui-grid/ui-grid.js"></script>
+</head>
+<body>
+    <div ng-controller="HomeController">
+        <input type="button" value="CREATE" ng-click="Create()" />
+        <ul>
+            <li ng-click="Edit(s)" ng-repeat="s in data">{{s.Name}}<span ng-click="Delete(s.Id)">X</span></li>
+        </ul>
+        <div ng-if="Selected">
+            <input type="text" ng-model="Selected.Name" />
+            <input type="text" ng-model="Selected.Description" />
+            <button type="button" ng-click="Update()">{{ButtonText}}</button>
+        </div>
+        <div ui-grid="GridOption" ui-grid-edit ui-grid-selection ui-grid-cellnav ui-grid-pagination class="ui-grid"></div> <!--ui-grid-exporter enable export options-->
+    </div>
+</body>
+<script type="text/javascript">
+    var app = angular.module("test", ["ngResource", "ui.grid", "ui.grid.edit", "ui.grid.exporter", "ui.grid.selection", 'ui.grid.pagination', 'ui.grid.cellNav']);
+    app.factory("values", function ($resource) {
+        return $resource('/api/values/:id', null, {
+            'update': { method: 'PUT' }
+        });
+    });
+    app.controller("HomeController", ["$scope", "values", "uiGridConstants", '$interval', '$q', function ($scope, values, uiGridConstants, $interval, $q) {
+
+        var fakeI18n = function (title) {
+            var deferred = $q.defer();
+            $interval(function () {
+                deferred.resolve('col: ' + title);
+            }, 1000, 1);
+            return deferred.promise;
+        };
+
+        $scope.Edit = function (obj) {
+            $scope.Selected = values.get({ id: obj.Id });
+            $scope.ButtonText = "UPDATE";
+        };
+
+        $scope.Update = function () {
+            if ($scope.Selected.Id) {
+                values.update({ id: $scope.Selected.Id }, $scope.Selected, function () {
+                    $scope.Refresh();
+                });
+            } else {
+                values.save($scope.Selected, function () {
+                    $scope.Refresh();
+                });
+            }
+        };
+
+        $scope.Refresh = function () {
+            $scope.data = values.query();
+            $scope.Selected = null;
+
+            $scope.GridOption = {
+                enableSorting: true,
+                enableFiltering: true,
+                showGridFooter: true,
+                enableGridMenu: true,
+                //gridMenuTitleFilter: fakeI18n,
+                paginationPageSizes: [5, 10, 25, 50, 75],
+                paginationPageSize: 5,
+                onRegisterApi: function (gridApi) {
+                    $scope.GridApi = gridApi;
+                    //var cellTemplate = 'ui-grid/selectionRowHeader';   // you could use your own template here
+                    //$scope.GridApi.core.addRowHeaderColumn({ name: 'rowHeaderCol', displayName: '', width: 30, cellTemplate: cellTemplate });
+
+                    gridApi.core.on.columnVisibilityChanged($scope, function (changedColumn) {
+                        $scope.columnChanged = { name: changedColumn.colDef.name, visible: changedColumn.colDef.visible };
+                    });
+
+                    gridApi.edit.on.afterCellEdit($scope, function (rowEntity, colDef, newValue, oldValue) {                        
+                        var Model = {
+                            Id: rowEntity.Id,
+                            Name: rowEntity.Name,
+                            Description: rowEntity.Description
+                        };
+                        values.update({ id: Model.Id }, Model, function () {                            
+                        });
+                    });
+
+                },
+                columnDefs: [
+                    { field: 'Id', enableSorting: false, enableFiltering: false, cellTooltip: function (row, col) { return "Id : " + row.entity.Id; }, headerTooltip: function (col) { return "Header : " + col.displayName; } },
+                    { field: 'Name', filter: { placeholder: "Name" }, enableCellEdit: true, cellTooltip: true, headerTooltip: true },
+                    { field: 'Description', filter: { placeholder: "Description" }, enableCellEdit: true }
+                ],
+                data: $scope.data
+            };
+        }
+
+        $scope.Delete = function (id) {
+            values.remove({ id: id }, function () {
+                $scope.Refresh();
+            });
+        }
+
+        $scope.Create = function () {
+            $scope.ButtonText = "SAVE";
+            $scope.Selected = {};
+        }
+
+        $scope.Refresh();
+    }]);
+</script>
+</html>
